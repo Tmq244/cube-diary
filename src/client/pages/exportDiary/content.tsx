@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
 import { Button, Card, Col, DatePicker, Form, Input, Radio, Row, Space } from 'antd';
-import { useExportDiary } from '@/client/services/diary';
+import { useExportDiary, exportPdf } from '@/client/services/diary';
 import s from './styles.module.css';
 
 import dayjs, { Dayjs } from 'dayjs';
@@ -25,6 +25,21 @@ const saveAsJson = (data: any, fileName = 'data.json') => {
   a.href = URL.createObjectURL(blob);
   a.dataset.downloadurl = ['text/json', a.download, a.href].join(':');
   a.click();
+};
+
+//AI-Generated: Cursor
+//Prompt: add a new function to handle PDF export
+
+// Function to handle PDF download
+const downloadPdf = (blob: Blob, filename = 'diary.pdf') => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 };
 
 /**
@@ -54,6 +69,7 @@ const getFormInitialValues = (): JsonExportForm => {
     contentKey: 'content',
     colorKey: 'color',
     dateFormatter: 'YYYY-MM-DD',
+    format: 'json', // Add default format as JSON
   };
 };
 
@@ -68,6 +84,8 @@ export const Content: FC<SettingContainerProps> = (props) => {
   const { mutateAsync: exportJson, isLoading } = useExportDiary();
   /** 是否为范围导出 */
   const isRangeExport = Form.useWatch('range', form) === 'part';
+  /** 导出格式 */
+  const exportFormat = Form.useWatch('format', form);
 
   const onFormValueChange = (values: Partial<JsonExportForm>, allValues: JsonExportForm) => {
     const newExample = createExample(allValues);
@@ -76,20 +94,35 @@ export const Content: FC<SettingContainerProps> = (props) => {
 
   const onExport = async () => {
     const values = await form.validateFields();
-    const { startDate, endDate, ...rest } = values;
-    const reqData: DiaryExportReqData = { ...rest };
+    const { startDate, endDate, format, ...rest } = values;
+    const reqData: DiaryExportReqData = { ...rest, format };
 
     if (reqData.range === 'part') {
       reqData.startDate = startDate.format('YYYY-MM-DD');
       reqData.endDate = endDate.format('YYYY-MM-DD');
     }
 
-    const resp = await exportJson(reqData);
-    messageSuccess('导出成功');
-    saveAsJson(resp, 'diary.json');
-
-    return resp.code === 200;
+    if (format === 'pdf') {
+      try {
+        // Use the service function that includes headers
+        const blob = await exportPdf(reqData);
+        downloadPdf(blob, 'diary.pdf');
+        messageSuccess('PDF导出成功');
+        return true;
+      } catch (error) {
+        console.error('PDF export error:', error);
+        return false;
+      }
+    } else {
+      const resp = await exportJson(reqData);
+      messageSuccess('导出成功');
+      saveAsJson(resp, 'diary.json');
+      return resp.code === 200;
+    }
   };
+
+  //AI-Generated: Cursor
+  //Prompt: add a new function to handle PDF export
 
   const renderContent = () => {
     return (
@@ -103,6 +136,15 @@ export const Content: FC<SettingContainerProps> = (props) => {
               onValuesChange={onFormValueChange}
               labelAlign='left'>
               <Row gutter={[16, 16]}>
+                <Col span={9}>导出格式</Col>
+                <Col span={15}>
+                  <Form.Item name='format' noStyle>
+                    <Radio.Group className='float-right'>
+                      <Radio value='json'>JSON</Radio>
+                      <Radio value='pdf'>PDF</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                </Col>
                 <Col span={9}>导出范围</Col>
                 <Col span={15}>
                   <Form.Item name='range' noStyle>
@@ -134,40 +176,73 @@ export const Content: FC<SettingContainerProps> = (props) => {
                     </Col>
                   </>
                 )}
-                <Col span={9}>日期字段名</Col>
-                <Col span={15}>
-                  <Form.Item name='dateKey' noStyle>
-                    <Input placeholder='默认使用 date' />
-                  </Form.Item>
-                </Col>
-                <Col span={9}>日期解析</Col>
-                <Col span={15}>
-                  <Form.Item name='dateFormatter' noStyle>
-                    <Input placeholder='默认解析毫秒时间戳' />
-                  </Form.Item>
-                </Col>
-                <Col span={9}>正文字段名</Col>
-                <Col span={15}>
-                  <Form.Item name='contentKey' noStyle>
-                    <Input placeholder='默认使用 content' />
-                  </Form.Item>
-                </Col>
-                <Col span={9}>颜色字段名</Col>
-                <Col span={15}>
-                  <Form.Item name='colorKey' noStyle>
-                    <Input placeholder='默认使用 color' />
-                  </Form.Item>
-                </Col>
+                {exportFormat === 'json' && (
+                  <>
+                    <Col span={9}>日期字段名</Col>
+                    <Col span={15}>
+                      <Form.Item
+                        name='dateKey'
+                        noStyle
+                        rules={[{ required: true, message: '请填写日期字段名' }]}>
+                        <Input placeholder='date' />
+                      </Form.Item>
+                    </Col>
+                    <Col span={9}>日期格式</Col>
+                    <Col span={15}>
+                      <Form.Item
+                        name='dateFormatter'
+                        noStyle
+                        rules={[{ required: true, message: '请填写日期格式' }]}>
+                        <Input placeholder='YYYY-MM-DD' />
+                      </Form.Item>
+                    </Col>
+                    <Col span={9}>内容字段名</Col>
+                    <Col span={15}>
+                      <Form.Item
+                        name='contentKey'
+                        noStyle
+                        rules={[{ required: true, message: '请填写内容字段名' }]}>
+                        <Input placeholder='content' />
+                      </Form.Item>
+                    </Col>
+                    <Col span={9}>颜色字段名</Col>
+                    <Col span={15}>
+                      <Form.Item
+                        name='colorKey'
+                        noStyle
+                        rules={[{ required: true, message: '请填写颜色字段名' }]}>
+                        <Input placeholder='color' />
+                      </Form.Item>
+                    </Col>
+                  </>
+                )}
               </Row>
             </Form>
           </Card>
         </Col>
 
-        <Col xs={24} md={24} lg={12}>
-          <Card size='small' className={s.previewArea} title='示例' extra='将导出为以下格式'>
-            <Preview value={example}></Preview>
-          </Card>
-        </Col>
+        {exportFormat === 'json' && (
+          <Col xs={24} md={24} lg={12}>
+            <Card size='small' title='预览'>
+              <div className={s.jsonExample}>
+                <pre>{JSON.stringify(example, null, 2)}</pre>
+              </div>
+              <Preview value='# 示例日记\n\n这是一篇示例日记，导出后的数据结构如下。' />
+            </Card>
+          </Col>
+        )}
+        
+        {exportFormat === 'pdf' && (
+          <Col xs={24} md={24} lg={12}>
+            <Card size='small' title='PDF导出说明'>
+              <div className="p-4">
+                <p>PDF导出将生成一个包含所选时间范围内所有日记条目的PDF文档。</p>
+                <p>文档将按照日期排序，并包含每篇日记的内容。</p>
+                <p>导出的PDF文件可用于打印或长期存档您的日记内容。</p>
+              </div>
+            </Card>
+          </Col>
+        )}
       </Row>
     );
   };

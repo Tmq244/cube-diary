@@ -156,28 +156,167 @@ export const createDiaryService = (props: Props) => {
     return { code: 200, data: result };
   };
 
-  const exportDiary = async (config: DiaryExportReqData, userId: number) => {
-    const sqlOpt = db.diary().select('date', 'content', 'color').where('createUserId', userId);
+  //AI-Generated: Cursor
+  //Prompt: add a new function to handle PDF export
 
-    if (config.range === 'part') {
-      const dateRange: [number, number] = [
-        dayjs(config.startDate).valueOf(),
-        dayjs(config.endDate).valueOf(),
-      ];
-      sqlOpt.andWhereBetween('date', dateRange);
+  const exportDiary = async (config: DiaryExportReqData, userId: number) => {
+    const { range, startDate, endDate } = config;
+
+    let query = db.diary().select('date', 'content', 'color').where('createUserId', userId);
+    if (range === 'part' && startDate && endDate) {
+      const startTime = dayjs(startDate).startOf('day').valueOf();
+      const endTime = dayjs(endDate).endOf('day').valueOf();
+      query = query.whereBetween('date', [startTime, endTime]);
     }
 
-    const diarys = await sqlOpt;
-
-    const data = diarys.map((diary) => ({
-      [config.dateKey]: config.dateFormatter
-        ? dayjs(diary.date).format(config.dateFormatter)
-        : diary.date,
+    const data = await query.orderBy('date', 'desc');
+    return data.map((diary) => ({
+      [config.dateKey]: dayjs(diary.date).format(config.dateFormatter),
       [config.contentKey]: diary.content,
       [config.colorKey]: diary.color,
     }));
+  };
 
-    return JSON.stringify(data);
+  /**
+   * 导出日记为PDF
+   */
+  const exportDiaryAsPdf = async (config: DiaryExportReqData, userId: number) => {
+    const { range, startDate, endDate } = config;
+
+    let query = db.diary().select('date', 'content', 'color').where('createUserId', userId);
+    if (range === 'part' && startDate && endDate) {
+      const startTime = dayjs(startDate).startOf('day').valueOf();
+      const endTime = dayjs(endDate).endOf('day').valueOf();
+      query = query.whereBetween('date', [startTime, endTime]);
+    }
+
+    const data = await query.orderBy('date', 'asc');
+    
+    // Generate HTML content for the PDF
+    let html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>方块日记导出</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 40px;
+          line-height: 1.6;
+        }
+        .diary-entry {
+          margin-bottom: 30px;
+          page-break-inside: avoid;
+        }
+        .diary-date {
+          font-size: 18px;
+          font-weight: bold;
+          margin-bottom: 10px;
+          padding-bottom: 5px;
+          border-bottom: 1px solid #ccc;
+        }
+        .diary-content {
+          margin-bottom: 20px;
+        }
+        .diary-content img {
+          max-width: 100%;
+          height: auto;
+        }
+        .diary-color {
+          width: 15px;
+          height: 15px;
+          display: inline-block;
+          border-radius: 50%;
+          margin-right: 10px;
+        }
+        h1, h2, h3, h4, h5, h6 {
+          margin-top: 20px;
+          margin-bottom: 10px;
+        }
+        blockquote {
+          border-left: 3px solid #ccc;
+          padding-left: 10px;
+          color: #666;
+          margin: 10px 0;
+        }
+        pre, code {
+          background-color: #f5f5f5;
+          border-radius: 3px;
+          padding: 2px 5px;
+        }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 20px 0;
+        }
+        table, th, td {
+          border: 1px solid #ddd;
+        }
+        th, td {
+          padding: 8px;
+          text-align: left;
+        }
+        th {
+          background-color: #f5f5f5;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>方块日记导出</h1>
+      <div class="export-info">
+        <p>导出时间: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}</p>
+        <p>日记条目数: ${data.length}</p>
+      </div>
+      <div class="diary-entries">
+    `;
+
+    // Add each diary entry to the HTML content
+    for (const diary of data) {
+      // Convert the Markdown content to HTML
+      let processedContent = diary.content;
+      
+      // Simple markdown to HTML conversion for basic formatting
+      // This is a simplified version - a real implementation should use a proper markdown parser
+      processedContent = processedContent
+        .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+        .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+        .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+        .replace(/^#### (.*?)$/gm, '<h4>$1</h4>')
+        .replace(/^##### (.*?)$/gm, '<h5>$1</h5>')
+        .replace(/^###### (.*?)$/gm, '<h6>$1</h6>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/~~(.*?)~~/g, '<del>$1</del>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" />')
+        .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>')
+        .replace(/^> (.*?)$/gm, '<blockquote>$1</blockquote>')
+        .replace(/\n/g, '<br />');
+
+      const dateStr = dayjs(diary.date).format('YYYY-MM-DD');
+      const colorStyle = diary.color ? `background-color: ${diary.color};` : 'display: none;';
+
+      html += `
+        <div class="diary-entry">
+          <div class="diary-date">
+            <span class="diary-color" style="${colorStyle}"></span>
+            ${dateStr}
+          </div>
+          <div class="diary-content">
+            ${processedContent}
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      </div>
+    </body>
+    </html>
+    `;
+
+    return html;
   };
 
   return {
@@ -187,6 +326,7 @@ export const createDiaryService = (props: Props) => {
     serachDiary,
     importDiary,
     exportDiary,
+    exportDiaryAsPdf
   };
 };
 

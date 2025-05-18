@@ -11,6 +11,7 @@ import {
   JsonImportForm,
   SearchDiaryReqData,
 } from '@/types/diary';
+import { generatePdf } from '@/server/utils/pdfGenerator';
 
 interface Props {
   service: TagService;
@@ -112,6 +113,7 @@ export const createDiaryRouter = (props: Props) => {
     contentKey: Joi.string(),
     colorKey: Joi.string(),
     dateFormatter: Joi.string(),
+    format: Joi.string().valid('json', 'pdf').allow(null),
   });
 
   // 导出笔记
@@ -125,7 +127,37 @@ export const createDiaryRouter = (props: Props) => {
     const data = await service.exportDiary(query, payload.userId);
     ctx.set('Content-disposition', 'attachment; filename=data.txt');
     ctx.set('Content-type', 'text/json');
-    ctx.body = data;
+    ctx.body = JSON.stringify(data);
+  });
+
+  //AI-Generated: Cursor
+  //Prompt: add a new function to handle PDF export
+
+  // 导出PDF
+  router.post('/exportPdf', async (ctx) => {
+    const query = validate(ctx, exportDiaryShema);
+    if (!query) return;
+
+    const payload = getJwtPayload(ctx);
+    if (!payload) return;
+
+    try {
+      const htmlContent = await service.exportDiaryAsPdf(query, payload.userId);
+      
+      // Convert HTML to PDF using our utility function
+      const pdfBuffer = await generatePdf(htmlContent, {
+        format: 'A4',
+        margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' },
+        printBackground: true
+      });
+      
+      ctx.set('Content-disposition', 'attachment; filename=diary.pdf');
+      ctx.set('Content-type', 'application/pdf');
+      ctx.body = pdfBuffer;
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      response(ctx, { code: 500, msg: 'PDF生成失败' });
+    }
   });
 
   return router;

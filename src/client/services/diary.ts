@@ -1,4 +1,4 @@
-import { queryClient, requestGet, requestPost } from './base';
+import { queryClient, requestGet, requestPost, axiosInstance } from './base';
 import { useMutation, useQuery } from 'react-query';
 import {
   Diary,
@@ -106,4 +106,12 @@ export const useExportDiary = () => {
   return useMutation((data: DiaryExportReqData) => {
     return requestPost<JsonImportResult>('diary/exportDiary', data);
   });
+};
+
+/** 导出PDF日记 */
+export const exportPdf = async (data: DiaryExportReqData): Promise<Blob> => {
+  const response = await axiosInstance.post('diary/exportPdf', data, {
+    responseType: 'blob'
+  });
+  return new Blob([response.data], { type: 'application/pdf' });
 };

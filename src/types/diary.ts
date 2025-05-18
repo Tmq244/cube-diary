@@ -98,4 +98,6 @@ export interface DiaryExportReqData {
   contentKey: string;
   /** 颜色字段名 */
   colorKey: string;
+  /** 导出格式 */
+  format?: 'json' | 'pdf';
 }
